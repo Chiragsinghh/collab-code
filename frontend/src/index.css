@@ -1,0 +1,173 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+
+@layer base {
+  :root {
+    --background: 220 20% 4%;
+    --foreground: 220 10% 90%;
+
+    --card: 220 15% 8%;
+    --card-foreground: 220 10% 90%;
+
+    --popover: 220 15% 8%;
+    --popover-foreground: 220 10% 90%;
+
+    --primary: 185 100% 50%;
+    --primary-foreground: 220 20% 4%;
+
+    --secondary: 220 15% 12%;
+    --secondary-foreground: 220 10% 90%;
+
+    --muted: 220 15% 15%;
+    --muted-foreground: 220 10% 50%;
+
+    --accent: 185 100% 50%;
+    --accent-foreground: 220 20% 4%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 220 10% 90%;
+
+    --border: 220 15% 15%;
+    --input: 220 15% 12%;
+    --ring: 185 100% 50%;
+
+    --radius: 0.75rem;
+
+    --surface: 220 15% 6%;
+    --surface-hover: 220 15% 10%;
+    --glow: 185 100% 50%;
+    --glow-secondary: 220 100% 60%;
+
+    --sidebar-background: 220 15% 6%;
+    --sidebar-foreground: 220 10% 90%;
+    --sidebar-primary: 185 100% 50%;
+    --sidebar-primary-foreground: 220 20% 4%;
+    --sidebar-accent: 220 15% 12%;
+    --sidebar-accent-foreground: 220 10% 90%;
+    --sidebar-border: 220 15% 15%;
+    --sidebar-ring: 185 100% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: hsl(var(--surface));
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted));
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground));
+  }
+}
+
+@layer utilities {
+  .text-glow {
+    text-shadow: 0 0 30px hsl(var(--glow) / 0.5);
+  }
+
+  .border-glow {
+    box-shadow: 0 0 20px -5px hsl(var(--glow) / 0.3),
+                inset 0 0 20px -15px hsl(var(--glow) / 0.1);
+  }
+
+  .bg-glow {
+    background: radial-gradient(ellipse at 50% 0%, hsl(var(--glow) / 0.15) 0%, transparent 50%);
+  }
+
+  .glass {
+    background: hsl(var(--card) / 0.8);
+    backdrop-filter: blur(24px);
+  }
+
+  .code-font {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 3s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted)) 0%,
+    hsl(var(--muted-foreground) / 0.1) 50%,
+    hsl(var(--muted)) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* index.css */
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  width: 100%;
+  /* Remove overflow: hidden from here! */
+}
+
+* {
+  box-sizing: border-box;
+}
