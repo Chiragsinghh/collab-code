@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Sidebar } from 'lucide-react';
 import { ChevronDown, ChevronRight, FileCode, Folder, FolderOpen, Plus, FolderPlus, Trash2, Edit2, FileText } from 'lucide-react';
 
 export default function FileTree({ nodes = [], activeFileId, onSelect, onAdd, onDelete, onRename }) {
