@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
+import axios from "axios";
+import { useAuth } from "../Context/AuthContext"; // Import useAuth
 import { Button } from "../components/button";
 import { Input } from "../components/input";
 import { Label } from "../components/label";
@@ -8,18 +10,33 @@ import { Code2, ArrowRight, Github, Mail } from "lucide-react";
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const { login } = useAuth(); // Use login from context
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // Simulate login
-    navigate("/dashboard");
+    setError("");
+
+    try {
+      const response = await axios.post("http://localhost:5001/api/auth/login", {
+        email,
+        password
+      });
+
+      if (response.data.token) {
+        // Use the context login method
+        login(response.data.user, response.data.token);
+        navigate("/dashboard");
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || "Invalid login credentials.");
+    }
   };
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-6 relative overflow-hidden">
-      {/* Background Effects */}
       <div className="absolute inset-0 bg-glow pointer-events-none" />
       <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-primary/5 rounded-full blur-[100px] pointer-events-none" />
 
@@ -29,7 +46,6 @@ export default function LoginPage() {
         transition={{ duration: 0.5 }}
         className="w-full max-w-md relative"
       >
-        {/* Logo */}
         <Link to="/" className="flex items-center gap-2 justify-center mb-8">
           <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
             <Code2 className="w-6 h-6 text-primary-foreground" />
@@ -37,41 +53,26 @@ export default function LoginPage() {
           <span className="font-semibold text-xl">CodeSync</span>
         </Link>
 
-        {/* Card */}
         <div className="bg-card border border-border rounded-xl p-8 shadow-card">
           <div className="text-center mb-8">
             <h1 className="text-2xl font-bold mb-2">Welcome Back</h1>
             <p className="text-muted-foreground">Sign in to continue coding</p>
           </div>
 
+          {error && <p className="text-destructive text-sm text-center mb-4">{error}</p>}
+
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="bg-secondary border-border"
-              />
+              <Input id="email" type="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className="bg-secondary border-border" required />
             </div>
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="password">Password</Label>
-                <Link to="/forgot-password" className="text-sm text-primary hover:underline">
-                  Forgot password?
-                </Link>
+                <Link to="/forgot-password" className="text-sm text-primary hover:underline">Forgot password?</Link>
               </div>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="bg-secondary border-border"
-              />
+              <Input id="password" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="bg-secondary border-border" required />
             </div>
 
             <Button type="submit" variant="hero" className="w-full">
@@ -81,31 +82,18 @@ export default function LoginPage() {
           </form>
 
           <div className="relative my-8">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-border" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
-            </div>
+            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border" /></div>
+            <div className="relative flex justify-center text-xs uppercase"><span className="bg-card px-2 text-muted-foreground">Or continue with</span></div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <Button variant="outline" className="w-full">
-              <Github className="w-4 h-4" />
-              GitHub
-            </Button>
-            <Button variant="outline" className="w-full">
-              <Mail className="w-4 h-4" />
-              Google
-            </Button>
+            <Button variant="outline" className="w-full"><Github className="w-4 h-4" />GitHub</Button>
+            <Button variant="outline" className="w-full"><Mail className="w-4 h-4" />Google</Button>
           </div>
         </div>
 
         <p className="text-center mt-6 text-muted-foreground">
-          Don't have an account?{" "}
-          <Link to="/signup" className="text-primary hover:underline font-medium">
-            Sign up
-          </Link>
+          Don't have an account? <Link to="/signup" className="text-primary hover:underline font-medium">Sign up</Link>
         </p>
       </motion.div>
     </div>

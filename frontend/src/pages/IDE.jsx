@@ -1,16 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useLocation, Link } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
+import { io } from 'socket.io-client';
 import { 
-  Code2,
-  Play, 
-  Settings, 
-  Plus, 
-  FolderPlus, 
-  ChevronRight, 
-  PanelLeftClose, 
-  PanelLeftOpen, 
-  PanelRightClose, 
-  PanelRightOpen 
+  Code2, Play, Settings, Plus, FolderPlus, Share2,
+  PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, ChevronRight, Check, Copy
 } from 'lucide-react';
 
 import FileTree from '../lib/utilis/FileTree';
@@ -18,105 +11,111 @@ import EditorTabs from '../components/ide/EditorTabs';
 import CodeEditor from '../components/ide/CodeEditor';
 import SidebarChat from '../components/ide/SidebarChat';
 
+const socket = io('http://localhost:5001');
+
 export default function EditorPage() {
-  const location = useLocation();
-  const [projectName, setProjectName] = useState("New Project");
-  
-  // Persistence: Load tree from localStorage on initialization
-  const [tree, setTree] = useState(() => {
-    const saved = localStorage.getItem('codesync_tree');
-    return saved ? JSON.parse(saved) : [];
-  }); 
-  
+  const { roomId } = useParams();
+  const [tree, setTree] = useState([]); 
   const [activeFile, setActiveFile] = useState(null);
   const [openFiles, setOpenFiles] = useState([]);
+  const [syncStatus, setSyncStatus] = useState("Connected");
   const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
+  const [copied, setCopied] = useState(false);
 
   // UI States
-  const [sidebarWidth, setSidebarWidth] = useState(240);
-  const [chatWidth, setChatWidth] = useState(320);
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
   const [isChatVisible, setIsChatVisible] = useState(true);
   
-  const isResizingSidebar = useRef(false);
-  const isResizingChat = useRef(false);
-
-  // Persistence: Save tree to localStorage whenever it changes
-  useEffect(() => {
-    localStorage.setItem('codesync_tree', JSON.stringify(tree));
-  }, [tree]);
+  // Ref to track the user object from localStorage
+  const user = JSON.parse(localStorage.getItem('codesync_user'));
 
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const name = params.get('name');
-    if (name) setProjectName(name);
+    if (roomId) {
+      socket.emit('join-room', { 
+        roomId, 
+        username: user?.username || 'Guest',
+        userId: user?.id || null 
+      });
+    }
 
-    const handleMouseMove = (e) => {
-      if (isResizingSidebar.current) {
-        const newWidth = e.clientX;
-        if (newWidth > 150 && newWidth < 450) setSidebarWidth(newWidth);
-      }
-      if (isResizingChat.current) {
-        const newWidth = window.innerWidth - e.clientX;
-        if (newWidth > 200 && newWidth < 500) setChatWidth(newWidth);
-      }
-    };
+    socket.on('init-state', ({ tree }) => {
+      setTree(tree);
+    });
 
-    const handleMouseUp = () => {
-      isResizingSidebar.current = false;
-      isResizingChat.current = false;
-      document.body.style.cursor = 'default';
-    };
+    socket.on('tree-synced', (newTree) => {
+      setTree(newTree);
+    });
 
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    socket.on('code-synced', ({ fileId, newContent }) => {
+      setTree(prevTree => {
+        const updateContent = (nodes) => nodes.map(node => {
+          if (node.id === fileId) {
+            const updated = { ...node, content: newContent };
+            // Update active file only if it's the one being edited
+            if (activeFile?.id === fileId) setActiveFile(updated);
+            return updated;
+          }
+          if (node.children) return { ...node, children: updateContent(node.children) };
+          return node;
+        });
+        return updateContent(prevTree);
+      });
+    });
+
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      socket.off('init-state');
+      socket.off('tree-synced');
+      socket.off('code-synced');
     };
-  }, [location]);
+  }, [roomId, activeFile?.id]);
 
-  // --- LOGIC FUNCTIONS ---
+  // --- AUTO-SAVE DEBOUNCE LOGIC ---
+  useEffect(() => {
+    if (!activeFile || activeFile.type === 'folder') return;
+
+    setSyncStatus("Typing...");
+    
+    const delayDebounceFn = setTimeout(() => {
+      socket.emit('code-change', { 
+        roomId, 
+        fileId: activeFile.id, 
+        newContent: activeFile.content 
+      });
+      setSyncStatus("Cloud Saved");
+    }, 1000); // Wait 1 second after last keystroke to save to DB
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [activeFile?.content, roomId]);
+
+  const copyRoomId = () => {
+    navigator.clipboard.writeText(window.location.href);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   const handleAdd = (parentId, type) => {
     const name = prompt(`Enter ${type} name:`);
     if (!name) return;
     const newNode = { 
       id: crypto.randomUUID(), 
-      name, 
-      type, 
+      name, type, 
       content: type === 'file' ? '' : undefined, 
       children: type === 'folder' ? [] : undefined 
     };
+
+    let newTree;
     if (!parentId) {
-      setTree([...tree, newNode]);
+      newTree = [...tree, newNode];
     } else {
       const addToNode = (nodes) => nodes.map(node => {
         if (node.id === parentId) return { ...node, children: [...(node.children || []), newNode] };
         if (node.children) return { ...node, children: addToNode(node.children) };
         return node;
       });
-      setTree(addToNode(tree));
+      newTree = addToNode(tree);
     }
-  };
-
-  const handleDelete = (id) => {
-    const removeFromTree = (nodes) => nodes
-      .filter(node => node.id !== id)
-      .map(node => ({ ...node, children: node.children ? removeFromTree(node.children) : undefined }));
-    setTree(removeFromTree(tree));
-    setOpenFiles(prev => prev.filter(f => f.id !== id));
-    if (activeFile?.id === id) setActiveFile(null);
-  };
-
-  const handleRename = (id) => {
-    const newName = prompt("Enter new name:");
-    if (!newName) return;
-    const renameInTree = (nodes) => nodes.map(node => {
-      if (node.id === id) return { ...node, name: newName };
-      if (node.children) return { ...node, children: renameInTree(node.children) };
-      return node;
-    });
-    setTree(renameInTree(tree));
+    setTree(newTree);
+    socket.emit('update-tree', { roomId, newTree });
   };
 
   const handleOpenFile = (file) => {
@@ -127,134 +126,99 @@ export default function EditorPage() {
 
   const handleContentChange = (newContent) => {
     if (!activeFile) return;
+    
+    // 1. Update Active File immediately for smooth typing
     const updatedFile = { ...activeFile, content: newContent };
     setActiveFile(updatedFile);
-    setOpenFiles(prev => prev.map(f => f.id === updatedFile.id ? updatedFile : f));
-    const updateTreeContent = (nodes) => nodes.map(node => {
-      if (node.id === updatedFile.id) return updatedFile;
-      if (node.children) return { ...node, children: updateTreeContent(node.children) };
-      return node;
+
+    // 2. Update Tree state so tabs and other components stay in sync
+    setTree(prevTree => {
+      const updateTreeContent = (nodes) => nodes.map(node => {
+        if (node.id === updatedFile.id) return updatedFile;
+        if (node.children) return { ...node, children: updateTreeContent(node.children) };
+        return node;
+      });
+      return updateTreeContent(prevTree);
     });
-    setTree(updateTreeContent(tree));
+    
+    // Note: socket.emit is now handled by the useEffect debounce above
   };
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-[#0B0E14] text-gray-400 overflow-hidden select-none font-sans">
-      
-      {/* HEADER */}
-      <header className="h-12 border-b border-white/5 flex items-center justify-between px-4 bg-[#0B0E14] shrink-0 z-10">
+    <div className="fixed inset-0 flex flex-col bg-[#0B0E14] text-gray-400 overflow-hidden font-sans">
+      <header className="h-12 border-b border-white/5 flex items-center justify-between px-4 bg-[#0B0E14] z-10">
         <div className="flex items-center gap-4">
-          <button onClick={() => setIsSidebarVisible(!isSidebarVisible)} className="hover:text-cyan-400 transition-colors">
+          <button onClick={() => setIsSidebarVisible(!isSidebarVisible)}>
             {isSidebarVisible ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
           </button>
+          
+          {/* THE TOP LEFT BUTTON: Ensure it uses Link */}
           <Link to="/" className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-cyan-500 flex items-center justify-center">
               <Code2 className="w-5 h-5 text-black" />
             </div>
-            <span className="font-semibold text-lg text-white">CodeSync</span>
+            <span className="font-semibold text-white tracking-tight">CodeSync</span>
           </Link>
         </div>
-        
-        <div className="flex items-center gap-4">
-          <button className="bg-[#00E5FF] hover:bg-cyan-400 text-black px-4 py-1.5 rounded-md text-[13px] font-bold flex items-center gap-2 shadow-[0_0_15px_rgba(0,229,255,0.15)] transition-all active:scale-95">
-            <Play size={14} fill="black" /> Preview
+
+        <div className="flex items-center gap-3">
+          <button onClick={copyRoomId} className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-white/5 border border-white/10 text-[12px]">
+            {copied ? <Check size={14} className="text-green-500" /> : <Share2 size={14} />}
+            {copied ? "Link Copied" : "Invite"}
           </button>
-          <button onClick={() => setIsChatVisible(!isChatVisible)} className="hover:text-cyan-400 transition-colors">
+          <button onClick={() => setIsChatVisible(!isChatVisible)}>
             {isChatVisible ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}
           </button>
-          <Settings size={18} className="hover:text-white cursor-pointer opacity-60" />
         </div>
       </header>
-
-      <div className="flex-1 flex overflow-hidden w-full">
-        
-        {/* LEFT SIDEBAR (Matte Grey Theme) */}
-        <aside 
-          style={{ width: isSidebarVisible ? sidebarWidth : 0 }} 
-          className={`flex flex-col shrink-0 bg-[#252526] border-r border-black/40 transition-all duration-300 ease-in-out ${!isSidebarVisible ? 'opacity-0 invisible' : 'opacity-100'}`}
-        >
-          <div className="h-10 flex items-center justify-between px-4 border-b border-white/5">
-            <span className="text-[11px] font-bold uppercase tracking-widest text-gray-400">Files</span>
-            <div className="flex gap-2">
-                <Plus size={16} className="text-gray-400 hover:text-white cursor-pointer" onClick={() => handleAdd(null, 'file')} />
-                <FolderPlus size={16} className="text-gray-400 hover:text-white cursor-pointer" onClick={() => handleAdd(null, 'folder')} />
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-hidden">
-            <FileTree 
-              nodes={tree} 
-              activeFileId={activeFile?.id} 
-              onSelect={handleOpenFile} 
-              onAdd={handleAdd} 
-              onDelete={handleDelete} 
-              onRename={handleRename} 
-            />
-          </div>
-        </aside>
-
+      
+      <div className="flex-1 flex overflow-hidden">
         {isSidebarVisible && (
-          <div 
-            onMouseDown={() => { isResizingSidebar.current = true; document.body.style.cursor = 'col-resize'; }} 
-            className="w-[2px] hover:w-1 hover:bg-cyan-500/50 transition-all bg-transparent cursor-col-resize shrink-0 z-20" 
-          />
+          <aside className="w-64 flex flex-col bg-[#0B0E14] border-r border-white/5">
+            <div className="h-10 flex items-center justify-between px-4 border-b border-white/5 bg-white/[0.02]">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Explorer</span>
+              <div className="flex gap-2">
+                  <Plus size={14} className="cursor-pointer hover:text-white opacity-60" onClick={() => handleAdd(null, 'file')} />
+                  <FolderPlus size={14} className="cursor-pointer hover:text-white opacity-60" onClick={() => handleAdd(null, 'folder')} />
+              </div>
+            </div>
+            <FileTree nodes={tree} activeFileId={activeFile?.id} onSelect={handleOpenFile} onAdd={handleAdd} />
+          </aside>
         )}
 
-        {/* CENTER: EDITOR (Midnight Theme) */}
-        <main className="flex-1 flex flex-col min-w-0 bg-[#0B0E14] relative">
+        <main className="flex-1 flex flex-col min-w-0 bg-[#0B0E14]">
           <EditorTabs openFiles={openFiles} activeFileId={activeFile?.id} onSelect={setActiveFile} />
-          {activeFile && (
-            <div className="h-8 flex items-center px-4 bg-[#1e1e1e] border-b border-white/5 text-[11px] text-gray-500 gap-2 font-medium">
-               <span className="opacity-50">src</span> 
-               <ChevronRight size={10} className="opacity-30" /> 
-               <span className="text-gray-300">{activeFile.name}</span>
-            </div>
-          )}
-          <div className="flex-1 relative w-full h-full bg-[#0B0E14]">
+          <div className="flex-1 relative">
             {activeFile ? (
               <CodeEditor activeFile={activeFile} onChange={handleContentChange} onCursorChange={setCursorPos} />
             ) : (
-              <div className="absolute inset-0 flex flex-col items-center justify-center opacity-10">
-                <Plus size={64} className="mb-4 text-cyan-500" />
-                <p className="text-lg font-bold tracking-tighter text-white uppercase">Ready to Code</p>
+              <div className="absolute inset-0 flex flex-col items-center justify-center opacity-20">
+                <Code2 size={48} className="mb-4 text-cyan-500" />
+                <p className="text-sm font-medium text-white tracking-widest uppercase">Open a file to start collaborating</p>
               </div>
             )}
           </div>
         </main>
 
         {isChatVisible && (
-          <div 
-            onMouseDown={() => { isResizingChat.current = true; document.body.style.cursor = 'col-resize'; }} 
-            className="w-[2px] hover:w-1 hover:bg-cyan-500/50 transition-all bg-transparent cursor-col-resize shrink-0 z-20" 
-          />
-        )}
-
-        {/* RIGHT SIDEBAR */}
-        <aside 
-          style={{ width: isChatVisible ? chatWidth : 0 }} 
-          className={`shrink-0 bg-[#0B0E14] border-l border-white/5 transition-all duration-300 ease-in-out ${!isChatVisible ? 'opacity-0 invisible' : 'opacity-100'}`}
-        >
-          <div className="h-full w-full overflow-hidden">
+          <aside className="w-80 bg-[#0B0E14] border-l border-white/5">
             <SidebarChat />
-          </div>
-        </aside>
+          </aside>
+        )}
       </div>
 
-      {/* FOOTER */}
-      <footer className="h-7 border-t border-white/5 flex items-center justify-between px-4 text-[11px] text-gray-500 bg-[#0B0E14] shrink-0 font-medium z-10">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-1 hover:text-white cursor-pointer transition-colors">
-            <span className="text-cyan-500 font-bold">{"{ }"}</span>
-            <span>JavaScript React</span>
+      <footer className="h-7 border-t border-white/5 flex items-center justify-between px-4 text-[10px] bg-[#0B0E14] text-gray-500">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5">
+            <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${syncStatus === 'Cloud Saved' ? 'bg-green-500' : 'bg-yellow-500'}`} />
+            <span>{syncStatus}</span>
           </div>
-          <span className="opacity-50">UTF-8</span>
+          <span className="opacity-30">|</span>
+          <span className="font-mono uppercase">Room: {roomId?.slice(0, 8)}...</span>
         </div>
-        <div className="flex items-center gap-6 font-mono text-[10px]">
+        <div className="flex items-center gap-4 font-mono">
+          <span>UTF-8</span>
           <span className="bg-white/5 px-2 py-0.5 rounded text-gray-400">Ln {cursorPos.line}, Col {cursorPos.col}</span>
-          <div className="flex items-center gap-3 font-sans">
-            <span className="hover:text-green-400 cursor-pointer transition-colors">Prettier</span>
-            <span className="hover:text-cyan-400 cursor-pointer transition-colors">ESLint</span>
-          </div>
         </div>
       </footer>
     </div>
