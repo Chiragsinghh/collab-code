@@ -1,25 +1,13 @@
 import express from 'express';
-import Project from '../models/Project.js';
+import { create, getProject, updateTree, getMyProjects, remove } from '../controllers/projectController.js';
+import { protect } from '../middlewares/authMiddleware.js';
 
 const router = express.Router();
 
-
-router.get('/user/:userId', async (req, res) => {
-  try {
-    const { userId } = req.params;
-    
-    const projects = await Project.find({
-      $or: [
-        { owner: userId },
-        { members: userId }
-      ]
-    }).sort({ updatedAt: -1 });
-
-    res.json(projects);
-  } catch (error) {
-    console.error("Error fetching user projects:", error);
-    res.status(500).json({ message: "Server error fetching projects" });
-  }
-});
+router.post('/', protect, create);
+router.get('/', protect, getMyProjects);
+router.get('/:roomId', protect, getProject);
+router.put('/:roomId/tree', protect, updateTree);
+router.delete('/:roomId', protect, remove);
 
 export default router;

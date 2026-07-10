@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import api from '../lib/api';
 
 const AuthContext = createContext();
 
@@ -7,14 +8,29 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Persistent login check
-    const savedUser = localStorage.getItem('codesync_user');
-    const token = localStorage.getItem('codesync_token');
-    
-    if (savedUser && token) {
-      setUser(JSON.parse(savedUser));
-    }
-    setLoading(false);
+    const checkAuth = async () => {
+      const token = localStorage.getItem('codesync_token');
+
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        // Verify token with backend
+        const { data } = await api.get('/auth/me');
+        setUser(data);
+      } catch (err) {
+        console.error("Auth check failed:", err);
+        localStorage.removeItem('codesync_token');
+        localStorage.removeItem('codesync_user');
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkAuth();
   }, []);
 
   const login = (userData, token) => {
@@ -30,7 +46,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, setUser, login, logout, loading }}>
       {!loading && children}
     </AuthContext.Provider>
   );

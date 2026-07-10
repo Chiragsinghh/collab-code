@@ -1,361 +1,415 @@
-import React, { useState } from "react";
+/**
+ * DashboardPage.jsx — matches the dark redesign (Landing/Login/Signup)
+ * ------------------------------------------------------------------
+ * All fetch/create/sort/filter/logout logic is untouched — only markup
+ * and styling changed.
+ *
+ * Swapped <Button>, <Input>, and the <Dialog> family for plain styled
+ * elements + a small self-contained modal, same reasoning as the other
+ * pages: guarantees the new palette renders regardless of those
+ * components' current internals. <UserAvatar> is kept as-is since I
+ * can't see its internal styling — you'll likely want to pass it the
+ * `clay` hex below for its ring/background to match.
+ *
+ * This is a working screen, not a marketing screen, so the ambient
+ * background here is intentionally quiet — a faint corner glow and dot
+ * grid, no cursor spotlight, so it doesn't compete with the project grid.
+ */
+
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
-import { Button } from "../components/button";
-import { Input } from "../components/input";
-import { 
-  Code2, 
-  Plus, 
-  Search, 
-  Clock, 
-  Users, 
-  MoreVertical,
-  FolderOpen,
-  Settings,
-  LogOut,
-  User
-} from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "../components/dropdown-menu";
+import api from "../lib/api";
+import { useAuth } from "../Context/AuthContext";
+import UserAvatar from "../components/ide/UserAvatar";
+import { Plus, LogOut, Search, X, Share2, Users } from "lucide-react";
 
-const projects = [
-  {
-    id: "1",
-    name: "E-commerce Dashboard",
-    lastEdited: "2 hours ago",
-    collaborators: [
-      { name: "Sarah", color: "bg-blue-500" },
-      { name: "Alex", color: "bg-green-500" },
-      { name: "Mike", color: "bg-purple-500" }
-    ],
-    language: "TypeScript"
-  },
-  {
-    id: "2",
-    name: "Landing Page Redesign",
-    lastEdited: "5 hours ago",
-    collaborators: [
-      { name: "Emma", color: "bg-pink-500" },
-      { name: "John", color: "bg-orange-500" }
-    ],
-    language: "React"
-  },
-  {
-    id: "3",
-    name: "API Integration Tests",
-    lastEdited: "1 day ago",
-    collaborators: [
-      { name: "Alex", color: "bg-green-500" }
-    ],
-    language: "JavaScript"
-  },
-  {
-    id: "4",
-    name: "Mobile App Components",
-    lastEdited: "2 days ago",
-    collaborators: [
-      { name: "Sarah", color: "bg-blue-500" },
-      { name: "Emma", color: "bg-pink-500" }
-    ],
-    language: "React Native"
-  },
-  {
-    id: "5",
-    name: "Documentation Site",
-    lastEdited: "3 days ago",
-    collaborators: [
-      { name: "Mike", color: "bg-purple-500" },
-      { name: "John", color: "bg-orange-500" },
-      { name: "Sarah", color: "bg-blue-500" }
-    ],
-    language: "MDX"
-  },
-  {
-    id: "6",
-    name: "Analytics Dashboard",
-    lastEdited: "1 week ago",
-    collaborators: [
-      { name: "Alex", color: "bg-green-500" },
-      { name: "Emma", color: "bg-pink-500" }
-    ],
-    language: "TypeScript"
-  }
-];
+/* ---- Design tokens (same across the app) ---- */
+const bg = "#191817";
+const surface = "#221F1A";
+const surfaceRaised = "#26221C";
+const text = "#F4F1EA";
+const textMuted = "#9B988F";
+const line = "rgba(244,241,234,0.10)";
+const clay = "#E4895F";
+const inputBg = "#1E1B16";
 
 const staggerContainer = {
-  animate: {
-    transition: {
-      staggerChildren: 0.05
-    }
-  }
+  animate: { transition: { staggerChildren: 0.05 } },
 };
 
 const fadeInUp = {
   initial: { opacity: 0, y: 10 },
-  animate: { opacity: 1, y: 0 }
+  animate: { opacity: 1, y: 0 },
 };
 
+function QuietBackground() {
+  return (
+    <div className="fixed inset-0 pointer-events-none z-0">
+      <div
+        className="absolute inset-0 opacity-[0.35]"
+        style={{
+          backgroundImage: `radial-gradient(${line} 1px, transparent 1px)`,
+          backgroundSize: "28px 28px",
+          maskImage: "radial-gradient(ellipse 55% 40% at 85% 0%, black 30%, transparent 100%)",
+        }}
+      />
+      <div
+        className="absolute rounded-full blur-[140px]"
+        style={{ width: 500, height: 500, background: clay, opacity: 0.08, top: -180, right: -100 }}
+      />
+    </div>
+  );
+}
+
 export default function DashboardPage() {
-  const [searchQuery, setSearchQuery] = useState("");
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
 
-  const handleNewProject = () => {
-    const projectName = prompt("Enter a name for your new project:");
-    if (projectName && projectName.trim() !== "") {
-      // Redirect to editor with the project name as a query parameter
-      navigate(`/editor/new?name=${encodeURIComponent(projectName.trim())}`);
+  const [projects, setProjects] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState("updated-desc");
+
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [projectName, setProjectName] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+
+  const [isJoinOpen, setIsJoinOpen] = useState(false);
+  const [joinRoomId, setJoinRoomId] = useState("");
+
+  const handleJoinSubmit = (e) => {
+    e.preventDefault();
+    if (!joinRoomId.trim()) return;
+    setIsJoinOpen(false);
+    navigate(`/editor/${joinRoomId.trim()}`);
+  };
+
+  const [copiedId, setCopiedId] = useState(null);
+
+  const handleCopyLink = (roomId) => {
+    navigator.clipboard.writeText(roomId);
+    setCopiedId(roomId);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchProjects = async () => {
+      try {
+        const { data } = await api.get(`/projects`);
+        setProjects(data);
+      } catch (err) {
+        console.error("Failed to fetch projects:", err);
+      }
+    };
+
+    fetchProjects();
+  }, [user]);
+
+  const handleCreateSubmit = async (e) => {
+    e.preventDefault();
+
+    if (!projectName.trim() || isCreating) return;
+
+    setIsCreating(true);
+
+    try {
+      const { data } = await api.post("/projects", {
+        name: projectName.trim(),
+      });
+
+      setIsCreateOpen(false);
+      setProjectName("");
+
+      navigate(`/editor/${data.roomId}`);
+    } catch (err) {
+      console.error("Create failed:", err);
+      alert("Project creation failed. Check backend.");
+    } finally {
+      setIsCreating(false);
     }
   };
 
-  const filteredProjects = projects.filter(project =>
-    project.name.toLowerCase().includes(searchQuery.toLowerCase())
+  const handleLogout = () => {
+    const confirmLogout = window.confirm("Are you sure you want to logout?");
+    if (!confirmLogout) return;
+
+    logout();
+    navigate("/");
+  };
+
+  const filteredProjects = projects.filter((p) =>
+    p.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const sortedProjects = [...filteredProjects].sort((a, b) => {
+    if (sortBy === "name-asc") return a.name.localeCompare(b.name);
+    if (sortBy === "name-desc") return b.name.localeCompare(a.name);
+    if (sortBy === "created-desc") return new Date(b.createdAt) - new Date(a.createdAt);
+    return new Date(b.updatedAt) - new Date(a.updatedAt);
+  });
+
   return (
-    <div className="min-h-screen bg-background">
-      {/* Navigation */}
-      <nav className="border-b border-border bg-surface">
-        <div className="container mx-auto px-6 h-16 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <Code2 className="w-5 h-5 text-primary-foreground" />
-            </div>
-            <span className="font-semibold text-lg">CodeSync</span>
+    <div className="min-h-screen relative" style={{ background: bg, color: text, fontFamily: "Inter, sans-serif" }}>
+      <QuietBackground />
+
+      {/* NAVBAR */}
+      <nav className="relative z-10" style={{ borderBottom: `1px solid ${line}`, background: `${bg}E6` }}>
+        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+          <Link to="/" className="flex items-center gap-2.5">
+            <span
+              className="w-8 h-8 rounded-[6px] flex items-center justify-center text-sm"
+              style={{ background: clay, color: bg, fontFamily: "'JetBrains Mono', monospace" }}
+            >
+              {"</>"}
+            </span>
+            <span className="text-[17px] tracking-tight" style={{ fontFamily: "'Fraunces', serif", fontWeight: 560 }}>
+              CodeSync
+            </span>
           </Link>
-          
+
           <div className="flex items-center gap-4">
-            <Button variant="glow" size="sm" onClick={handleNewProject}>
+            <button
+              onClick={() => setIsCreateOpen(true)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-[14px] transition-transform hover:-translate-y-0.5"
+              style={{ background: clay, color: bg }}
+            >
               <Plus className="w-4 h-4" />
-              New Project
-            </Button>
-            
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-medium hover:opacity-90 transition-opacity">
-                  J
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuItem asChild>
-                  <Link to="/profile" className="flex items-center gap-2">
-                    <User className="w-4 h-4" />
-                    Profile
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link to="/settings" className="flex items-center gap-2">
-                    <Settings className="w-4 h-4" />
-                    Settings
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link to="/login" className="flex items-center gap-2 text-destructive">
-                    <LogOut className="w-4 h-4" />
-                    Sign Out
-                  </Link>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+              New project
+            </button>
+
+            <button
+              onClick={() => setIsJoinOpen(true)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-[14px] transition-transform hover:-translate-y-0.5"
+              style={{ border: `1px solid ${line}`, color: text }}
+            >
+              <Users className="w-4 h-4" />
+              Join project
+            </button>
+
+            <UserAvatar
+              name={user?.name || user?.username || "U"}
+              className="w-8 h-8 text-sm cursor-pointer transition-all"
+              style={{ boxShadow: `0 0 0 2px ${bg}, 0 0 0 3px ${line}` }}
+              onClick={() => navigate("/settings")}
+            />
+
+            <button
+              onClick={handleLogout}
+              className="p-2 rounded-lg transition-colors"
+              style={{ color: textMuted }}
+              title="Logout"
+            >
+              <LogOut className="w-[18px] h-[18px]" />
+            </button>
           </div>
         </div>
       </nav>
 
-      {/* Main Content */}
-      <main className="container mx-auto px-6 py-8">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-        >
-          {/* Header */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-            <div>
-              <h1 className="text-2xl font-bold mb-1">Your Projects</h1>
-              <p className="text-muted-foreground">Manage and collaborate on your code</p>
-            </div>
-            
-            <div className="relative w-full md:w-80">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
+      {/* MAIN CONTENT */}
+      <main className="relative z-10 max-w-6xl mx-auto px-6 py-10">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-9">
+          <h1 className="text-2xl" style={{ fontFamily: "'Fraunces', serif", fontWeight: 560 }}>
+            Welcome, {user?.name || user?.username || "Developer"}
+          </h1>
+
+          <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
+            <div className="relative w-full sm:w-64">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: textMuted }} />
+              <input
                 placeholder="Search projects..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 bg-secondary border-border"
+                className="w-full pl-9 pr-3 py-2.5 rounded-lg text-[14px] outline-none transition-colors"
+                style={{ background: inputBg, border: `1px solid ${line}`, color: text }}
+                onFocus={(e) => (e.target.style.borderColor = clay)}
+                onBlur={(e) => (e.target.style.borderColor = line)}
               />
             </div>
+
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="h-[42px] px-3 rounded-lg text-sm w-full sm:w-auto cursor-pointer outline-none"
+              style={{ background: inputBg, border: `1px solid ${line}`, color: text }}
+            >
+              <option value="updated-desc">Last updated (newest)</option>
+              <option value="created-desc">Date created (newest)</option>
+              <option value="name-asc">Name (A–Z)</option>
+              <option value="name-desc">Name (Z–A)</option>
+            </select>
           </div>
+        </div>
 
-          {/* Quick Actions */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            <motion.div
-              whileHover={{ y: -2 }}
-              className="p-4 rounded-xl bg-card border border-border hover:border-primary/50 transition-all cursor-pointer group"
-              onClick={handleNewProject}
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                  <Plus className="w-6 h-6 text-primary" />
-                </div>
-                <div>
-                  <h3 className="font-medium">New Project</h3>
-                  <p className="text-sm text-muted-foreground">Start from scratch</p>
-                </div>
-              </div>
-            </motion.div>
-
-            <motion.div
-              whileHover={{ y: -2 }}
-              className="p-4 rounded-xl bg-card border border-border hover:border-primary/50 transition-all cursor-pointer group"
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                  <FolderOpen className="w-6 h-6 text-primary" />
-                </div>
-                <div>
-                  <h3 className="font-medium">Import Project</h3>
-                  <p className="text-sm text-muted-foreground">From GitHub or ZIP</p>
-                </div>
-              </div>
-            </motion.div>
-
-            <motion.div
-              whileHover={{ y: -2 }}
-              className="p-4 rounded-xl bg-card border border-border hover:border-primary/50 transition-all cursor-pointer group"
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                  <Users className="w-6 h-6 text-primary" />
-                </div>
-                <div>
-                  <h3 className="font-medium">Join Room</h3>
-                  <p className="text-sm text-muted-foreground">Via invite link</p>
-                </div>
-              </div>
-            </motion.div>
-
-            <motion.div
-              whileHover={{ y: -2 }}
-              className="p-4 rounded-xl bg-card border border-border hover:border-primary/50 transition-all cursor-pointer group"
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                  <Code2 className="w-6 h-6 text-primary" />
-                </div>
-                <div>
-                  <h3 className="font-medium">Templates</h3>
-                  <p className="text-sm text-muted-foreground">Quick start templates</p>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-
-          {/* Projects Grid */}
-          <motion.div
-            variants={staggerContainer}
-            initial="initial"
-            animate="animate"
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
-          >
-            {filteredProjects.map((project) => (
-              <motion.div
-                key={project.id}
-                variants={fadeInUp}
-                whileHover={{ y: -4, transition: { duration: 0.2 } }}
-                className="group relative"
-              >
+        <motion.div
+          variants={staggerContainer}
+          initial="initial"
+          animate="animate"
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"
+        >
+          {sortedProjects.length === 0 ? (
+            <p className="col-span-full" style={{ color: textMuted }}>
+              No projects found. Create your first one.
+            </p>
+          ) : (
+            sortedProjects.map((project) => (
+              <motion.div key={project.roomId} variants={fadeInUp} whileHover={{ y: -4 }}>
                 <Link
-                  to={`/editor/${project.id}?name=${encodeURIComponent(project.name)}`}
-                  className="block p-5 rounded-xl bg-card border border-border hover:border-primary/50 transition-all duration-300"
+                  to={`/editor/${project.roomId}`}
+                  className="block p-6 rounded-xl transition-colors"
+                  style={{ background: surfaceRaised, border: `1px solid ${line}` }}
+                  onMouseEnter={(e) => (e.currentTarget.style.borderColor = clay)}
+                  onMouseLeave={(e) => (e.currentTarget.style.borderColor = line)}
                 >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <Code2 className="w-5 h-5 text-primary" />
-                    </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button 
-                          className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-secondary transition-all"
-                          onClick={(e) => e.preventDefault()}
-                        >
-                          <MoreVertical className="w-4 h-4 text-muted-foreground" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem>Open in new tab</DropdownMenuItem>
-                        <DropdownMenuItem>Duplicate</DropdownMenuItem>
-                        <DropdownMenuItem asChild>
-                          <Link to={`/project/${project.id}/settings`}>Settings</Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem className="text-destructive">Delete</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-
-                  <h3 className="font-semibold mb-2 group-hover:text-primary transition-colors">
-                    {project.name}
-                  </h3>
-
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
-                    <div className="flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5" />
-                      {project.lastEdited}
-                    </div>
-                    <div className="px-2 py-0.5 rounded-md bg-secondary text-xs">
-                      {project.language}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div className="flex -space-x-2">
-                      {project.collaborators.slice(0, 4).map((collaborator, index) => (
-                        <div
-                          key={index}
-                          className={`w-7 h-7 rounded-full ${collaborator.color} flex items-center justify-center text-xs text-background font-medium ring-2 ring-card`}
-                          title={collaborator.name}
-                        >
-                          {collaborator.name[0]}
-                        </div>
-                      ))}
-                      {project.collaborators.length > 4 && (
-                        <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center text-xs text-muted-foreground ring-2 ring-card">
-                          +{project.collaborators.length - 4}
-                        </div>
+                  <div className="flex justify-between items-start mb-1.5 gap-2">
+                    <h3 className="text-[16px] leading-tight" style={{ fontFamily: "'Fraunces', serif", fontWeight: 560 }}>
+                      {project.name}
+                    </h3>
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleCopyLink(project.roomId);
+                      }}
+                      className="p-1.5 rounded-lg transition-all hover:scale-105 active:scale-95 flex items-center justify-center shrink-0"
+                      style={{ border: `1px solid ${line}`, background: bg }}
+                      title="Copy sharing link"
+                    >
+                      {copiedId === project.roomId ? (
+                        <span className="text-[11px]" style={{ color: "#7FB39E" }}>Copied!</span>
+                      ) : (
+                        <Share2 className="w-3.5 h-3.5" style={{ color: textMuted }} />
                       )}
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Users className="w-3.5 h-3.5" />
-                      {project.collaborators.length}
-                    </div>
+                    </button>
                   </div>
+                  <p className="text-[13px]" style={{ color: textMuted, fontFamily: "'JetBrains Mono', monospace" }}>
+                    {project.roomId.slice(0, 8)}...
+                  </p>
                 </Link>
               </motion.div>
-            ))}
-          </motion.div>
-
-          {filteredProjects.length === 0 && (
-            <div className="text-center py-16">
-              <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center mx-auto mb-4">
-                <Search className="w-8 h-8 text-muted-foreground" />
-              </div>
-              <h3 className="text-lg font-medium mb-2">No projects found</h3>
-              <p className="text-muted-foreground mb-6">
-                Try adjusting your search or create a new project
-              </p>
-              <Button variant="glow" onClick={handleNewProject}>
-                <Plus className="w-4 h-4" />
-                Create Project
-              </Button>
-            </div>
+            ))
           )}
         </motion.div>
       </main>
+
+      {/* CREATE PROJECT MODAL */}
+      {isCreateOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-6"
+          style={{ background: "rgba(10,9,8,0.6)", backdropFilter: "blur(4px)" }}
+          onClick={() => setIsCreateOpen(false)}
+        >
+          <motion.div
+            initial={{ opacity: 0, y: 10, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.2 }}
+            className="w-full max-w-sm rounded-2xl p-6"
+            style={{ background: surfaceRaised, border: `1px solid ${line}`, boxShadow: "0 30px 80px -30px rgba(0,0,0,0.6)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-5">
+              <h2 style={{ fontFamily: "'Fraunces', serif", fontWeight: 560, fontSize: 18 }}>
+                Create new project
+              </h2>
+              <button onClick={() => setIsCreateOpen(false)} style={{ color: textMuted }}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateSubmit}>
+              <input
+                placeholder="Project name"
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                autoFocus
+                className="w-full px-3.5 py-2.5 rounded-lg text-[14px] outline-none transition-colors"
+                style={{ background: inputBg, border: `1px solid ${line}`, color: text }}
+                onFocus={(e) => (e.target.style.borderColor = clay)}
+                onBlur={(e) => (e.target.style.borderColor = line)}
+              />
+
+              <div className="flex justify-end gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setIsCreateOpen(false)}
+                  className="px-4 py-2 rounded-lg text-[14px]"
+                  style={{ color: textMuted }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!projectName.trim() || isCreating}
+                  className="px-4 py-2 rounded-lg text-[14px] disabled:opacity-50"
+                  style={{ background: clay, color: bg }}
+                >
+                  {isCreating ? "Creating..." : "Create"}
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
+
+      {/* JOIN PROJECT MODAL */}
+      {isJoinOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-6"
+          style={{ background: "rgba(10,9,8,0.6)", backdropFilter: "blur(4px)" }}
+          onClick={() => setIsJoinOpen(false)}
+        >
+          <motion.div
+            initial={{ opacity: 0, y: 10, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.2 }}
+            className="w-full max-w-sm rounded-2xl p-6"
+            style={{ background: surfaceRaised, border: `1px solid ${line}`, boxShadow: "0 30px 80px -30px rgba(0,0,0,0.6)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-5">
+              <h2 style={{ fontFamily: "'Fraunces', serif", fontWeight: 560, fontSize: 18 }}>
+                Join project
+              </h2>
+              <button onClick={() => setIsJoinOpen(false)} style={{ color: textMuted }}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleJoinSubmit}>
+              <input
+                placeholder="Project ID (Room ID)"
+                value={joinRoomId}
+                onChange={(e) => setJoinRoomId(e.target.value)}
+                autoFocus
+                className="w-full px-3.5 py-2.5 rounded-lg text-[14px] outline-none transition-colors"
+                style={{ background: inputBg, border: `1px solid ${line}`, color: text }}
+                onFocus={(e) => (e.target.style.borderColor = clay)}
+                onBlur={(e) => (e.target.style.borderColor = line)}
+              />
+
+              <div className="flex justify-end gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setIsJoinOpen(false)}
+                  className="px-4 py-2 rounded-lg text-[14px]"
+                  style={{ color: textMuted }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!joinRoomId.trim()}
+                  className="px-4 py-2 rounded-lg text-[14px] disabled:opacity-50"
+                  style={{ background: clay, color: bg }}
+                >
+                  Join
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }

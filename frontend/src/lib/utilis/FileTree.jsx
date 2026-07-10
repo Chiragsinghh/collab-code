@@ -1,82 +1,159 @@
-import React, { useState } from 'react';
-import { ChevronDown, ChevronRight, FileCode, Folder, FolderOpen, Plus, FolderPlus, Trash2, Edit2, FileText } from 'lucide-react';
+import React, { useState } from "react";
+import {
+  ChevronRight,
+  ChevronDown,
+  File,
+  Folder,
+  FolderOpen,
+  Trash2,
+  Plus,
+} from "lucide-react";
 
-export default function FileTree({ nodes = [], activeFileId, onSelect, onAdd, onDelete, onRename }) {
-  // Matches the page background color exactly
-  if (nodes.length === 0) {
-    return (
-      <div className="flex items-start justify-center h-full pt-12 bg-[#0B0E14]">
-        <span className="text-[11px] font-bold text-gray-600 tracking-[0.2em] uppercase">
-          No files in project
-        </span>
-      </div>
-    );
-  }
-
+export default function FileTree({
+  nodes,
+  onSelect,
+  renameNode,
+  deleteNode,
+  createInside,
+}) {
   return (
-    <div className="h-full overflow-y-auto bg-[#0B0E14] py-1">
-      {nodes.map(node => (
-        <TreeNode 
-          key={node.id} 
-          node={node} 
-          depth={0} 
-          activeFileId={activeFileId} 
+    <div className="p-2 text-sm space-y-1">
+      {nodes.map((node) => (
+        <TreeNode
+          key={node.id}
+          node={node}
+          level={0}
           onSelect={onSelect}
-          onAdd={onAdd}
-          onDelete={onDelete}
-          onRename={onRename}
+          renameNode={renameNode}
+          deleteNode={deleteNode}
+          createInside={createInside}
         />
       ))}
     </div>
   );
 }
 
-function TreeNode({ node, depth, activeFileId, onSelect, onAdd, onDelete, onRename }) {
-  const [isOpen, setIsOpen] = useState(true);
-  const isSelected = activeFileId === node.id;
+/* ---------------- SINGLE NODE ---------------- */
+
+function TreeNode({
+  node,
+  level,
+  onSelect,
+  renameNode,
+  deleteNode,
+  createInside,
+}) {
+  const [open, setOpen] = useState(true);
+  const [editing, setEditing] = useState(node.isNew || false);
+  const [tempName, setTempName] = useState(node.name);
+
+  /* ---------------- HANDLE ENTER SAVE ---------------- */
+  const handleSave = () => {
+    if (!tempName.trim()) return;
+
+    renameNode(node.id, tempName.trim());
+    setEditing(false);
+  };
+
+  /* ---------------- FILE CLICK ---------------- */
+  const handleClick = () => {
+    if (node.type === "folder") {
+      setOpen(!open);
+    } else {
+      if (typeof onSelect === "function") {
+        onSelect(node);
+      }
+    }
+  };
 
   return (
-    <div className="select-none font-sans">
-      <div 
-        className={`flex items-center py-1.5 pr-2 cursor-pointer group transition-all ${
-          /* Changed active and hover colors to blue-ish tints to match CodeSync */
-          isSelected ? 'bg-cyan-500/10 text-cyan-400' : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'
-        }`}
-        style={{ paddingLeft: `${depth * 12 + 16}px` }}
-        onClick={() => node.type === 'folder' ? setIsOpen(!isOpen) : onSelect(node)}
+    <div>
+      {/* ROW */}
+      <div
+        className="flex items-center gap-2 px-2 py-1 rounded hover:bg-white/5 cursor-pointer group"
+        style={{ paddingLeft: `${level * 14 + 8}px` }}
+        onClick={handleClick}
       >
-        {/* Selection Indicator */}
-        {isSelected && <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-cyan-500 shadow-[0_0_10px_rgba(0,229,255,0.3)]" />}
-        
-        <span className="mr-1.5 opacity-40">
-          {node.type === 'folder' ? (isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />) : <div className="w-[14px]" />}
-        </span>
-        
-        <span className="mr-2">
-          {node.type === 'folder' ? (
-            <Folder size={16} className="text-cyan-500/60" />
-          ) : (
-            <FileText size={16} className="text-gray-500" />
-          )}
-        </span>
+        {/* Folder Arrow */}
+        {node.type === "folder" && (
+          <span className="w-4">
+            {open ? (
+              <ChevronDown size={14} />
+            ) : (
+              <ChevronRight size={14} />
+            )}
+          </span>
+        )}
 
-        <span className={`text-[13px] truncate flex-1 tracking-tight ${isSelected ? 'font-medium' : ''}`}>
-          {node.name}
-        </span>
-        
-        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500">
-          {node.type === 'folder' && (
-            <Plus size={14} className="hover:text-cyan-400" onClick={(e) => { e.stopPropagation(); onAdd(node.id, 'file'); }} />
-          )}
-          <Trash2 size={14} className="hover:text-red-500" onClick={(e) => { e.stopPropagation(); onDelete(node.id); }} />
-        </div>
+        {/* ICON */}
+        {node.type === "folder" ? (
+          open ? (
+            <FolderOpen size={16} className="text-cyan-400" />
+          ) : (
+            <Folder size={16} className="text-cyan-400" />
+          )
+        ) : (
+          <File size={15} className="text-gray-400" />
+        )}
+
+        {/* NAME OR INPUT */}
+        {editing ? (
+          <input
+            autoFocus
+            value={tempName}
+            onChange={(e) => setTempName(e.target.value)}
+            onBlur={handleSave}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleSave();
+              if (e.key === "Escape") setEditing(false);
+            }}
+            className="bg-black text-white text-sm px-1 rounded outline-none border border-white/20 w-full"
+          />
+        ) : (
+          <span className="flex-1 truncate">{node.name}</span>
+        )}
+
+        {/* ACTIONS */}
+        {!editing && (
+          <div className="hidden group-hover:flex gap-2">
+            {/* Add inside folder */}
+            {node.type === "folder" && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  createInside(node.id, "file");
+                }}
+              >
+                <Plus size={14} className="text-gray-400 hover:text-white" />
+              </button>
+            )}
+
+            {/* Delete */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                deleteNode(node.id);
+              }}
+            >
+              <Trash2 size={14} className="text-red-400 hover:text-red-500" />
+            </button>
+          </div>
+        )}
       </div>
-      
-      {node.type === 'folder' && isOpen && node.children && (
-        /* Added a very subtle blue guide line for nesting */
-        <div className="border-l border-white/5 ml-[24px]">
-          {node.children.map(child => (
-            <TreeNode key={child.id} node={child} depth={depth + 1} activeFileId={activeFileId} onSelect={onSelect} onAdd={onAdd} onDelete={onDelete} onRename={onRename} />
+
+      {/* CHILDREN */}
+      {node.type === "folder" && open && node.children && (
+        <div>
+          {node.children.map((child) => (
+            <TreeNode
+              key={child.id}
+              node={child}
+              level={level + 1}
+              onSelect={onSelect}
+              renameNode={renameNode}
+              deleteNode={deleteNode}
+              createInside={createInside}
+            />
           ))}
         </div>
       )}
