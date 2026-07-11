@@ -1,11 +1,13 @@
 {
   "type": "module",
   "dependencies": {
+    "adm-zip": "^0.5.18",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "diff": "^8.0.3",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
+    "fflate": "^0.8.3",
     "fs-extra": "^11.3.3",
     "jsonwebtoken": "^9.0.3",
     "mongodb": "^7.0.0",

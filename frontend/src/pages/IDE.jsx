@@ -16,15 +16,17 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link, useParams } from "react-router-dom";
 import { io } from "socket.io-client";
+import JSZip from "jszip";
 import api from "../lib/api";
 import { useAuth } from "../Context/AuthContext";
 
-import { Plus, FolderPlus, Play, MonitorPlay, Share2, X } from "lucide-react";
+import { Plus, FolderPlus, Play, MonitorPlay, Share2, X, Download, Upload } from "lucide-react";
 
 import FileTree from "../components/ide/FileTree";
 import CodeEditor from "../components/ide/CodeEditor";
 import TerminalPanel from "../components/ide/TerminalPanel";
 import UserAvatar from "../components/ide/UserAvatar";
+import PreviewPopup from "../components/ide/PreviewPopup";
 
 /* ---- Design tokens (same across the app) ---- */
 const bg = "#191817";
@@ -56,12 +58,15 @@ export default function EditorPage() {
   const [socket, setSocket] = useState(null);
 
   const [tree, setTree] = useState([]);
+  const [projectName, setProjectName] = useState("");
   const [activeFile, setActiveFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   const terminalRef = useRef(null);
   const fileContentRef = useRef({});
+  const uploadZipRef = useRef(null);
+  const uploadFolderRef = useRef(null);
 
   const [users, setUsers] = useState([]);
   const [remoteCursors, setRemoteCursors] = useState({});
@@ -135,8 +140,6 @@ export default function EditorPage() {
         delete next[userId];
         return next;
       });
-      const styleEl = document.getElementById(`monaco-remote-cursor-style-${userId}`);
-      if (styleEl) styleEl.remove();
     });
 
     newSocket.on("cursor-update", (data) => {
@@ -220,6 +223,7 @@ export default function EditorPage() {
     const fetchProject = async () => {
       try {
         const { data } = await api.get(`/projects/${roomId}`);
+        setProjectName(data.name || "");
         const projectTree = Array.isArray(data.tree) ? data.tree : [];
         setTree(projectTree);
 
@@ -248,9 +252,10 @@ export default function EditorPage() {
     let result = [];
     for (let node of nodes) {
       if (node.type === "file") {
+        const content = fileContentRef.current[node.id] ?? node.content ?? "";
         result.push({
           path: base + node.name,
-          content: node.content || "",
+          content,
         });
       }
       if (node.children) {
@@ -258,6 +263,197 @@ export default function EditorPage() {
       }
     }
     return result;
+  };
+
+  const buildTreeFromZipPaths = (files) => {
+    const root = [];
+
+    const ensureFolder = (children, name) => {
+      let folder = children.find((n) => n.type === "folder" && n.name === name);
+      if (!folder) {
+        folder = {
+          id: crypto.randomUUID(),
+          name,
+          type: "folder",
+          children: [],
+        };
+        children.push(folder);
+      }
+      return folder;
+    };
+
+    for (const { path, content } of files) {
+      const parts = path.split("/").filter(Boolean);
+      if (parts.length === 0) continue;
+
+      let current = root;
+      for (let i = 0; i < parts.length - 1; i++) {
+        const folder = ensureFolder(current, parts[i]);
+        current = folder.children;
+      }
+
+      const fileName = parts[parts.length - 1];
+      const fileId = crypto.randomUUID();
+      const fileNode = {
+        id: fileId,
+        name: fileName,
+        type: "file",
+        content: content || "",
+      };
+
+      fileContentRef.current[fileId] = fileNode.content;
+      fileVersionsRef.current[fileId] = 0;
+
+      const existingIdx = current.findIndex(
+        (n) => n.type === "file" && n.name === fileName
+      );
+      if (existingIdx >= 0) {
+        const existingId = current[existingIdx].id;
+        fileNode.id = existingId;
+        fileContentRef.current[existingId] = fileNode.content;
+        current[existingIdx] = fileNode;
+      } else {
+        current.push(fileNode);
+      }
+    }
+
+    return root;
+  };
+
+  const mergeTrees = (existing, incoming) => {
+    const result = [...existing];
+
+    for (const node of incoming) {
+      const matchIdx = result.findIndex((n) => n.name === node.name && n.type === node.type);
+
+      if (matchIdx === -1) {
+        result.push(node);
+        continue;
+      }
+
+      if (node.type === "folder" && result[matchIdx].type === "folder") {
+        result[matchIdx] = {
+          ...result[matchIdx],
+          children: mergeTrees(result[matchIdx].children || [], node.children || []),
+        };
+      } else if (node.type === "file" && result[matchIdx].type === "file") {
+        const existingId = result[matchIdx].id;
+        fileContentRef.current[existingId] = node.content || "";
+        result[matchIdx] = { ...result[matchIdx], content: node.content || "" };
+      }
+    }
+
+    return result;
+  };
+
+  const applyUploadedFiles = async (extracted, sourceLabel = "upload") => {
+    if (extracted.length === 0) {
+      terminalRef.current?.write("No readable files found in upload.\n");
+      addNotification("No readable files found in upload.", "warning");
+      return;
+    }
+
+    const uploadedTree = buildTreeFromZipPaths(extracted);
+    const mergedTree = mergeTrees(tree, uploadedTree);
+
+    handleTreeUpdate(mergedTree);
+    await api.put(`/projects/${roomId}/tree`, { tree: mergedTree });
+
+    const message = `Uploaded ${extracted.length} file(s) from ${sourceLabel}.`;
+    terminalRef.current?.write(`${message}\n`);
+    addNotification(message, "success");
+  };
+
+  const handleDownloadProject = async () => {
+    try {
+      const zip = new JSZip();
+      const files = flattenFiles(tree);
+
+      if (files.length === 0) {
+        terminalRef.current?.write("No files to download.\n");
+        addNotification("No files to download.", "warning");
+        return;
+      }
+
+      for (const file of files) {
+        zip.file(file.path, file.content);
+      }
+
+      const blob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const safeName = (projectName || "project").replace(/[^a-z0-9-_]+/gi, "-").toLowerCase();
+      link.href = url;
+      link.download = `${safeName || "codesync-project"}.zip`;
+      link.click();
+      URL.revokeObjectURL(url);
+
+      const message = `Downloaded ${files.length} file(s).`;
+      terminalRef.current?.write(`${message}\n`);
+      addNotification(message, "success");
+    } catch (err) {
+      terminalRef.current?.write(`Download failed: ${err.message}\n`);
+      addNotification(`Download failed: ${err.message}`, "warning");
+    }
+  };
+
+  const handleUploadZip = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) return;
+
+    try {
+      const zip = await JSZip.loadAsync(file);
+      const extracted = [];
+
+      await Promise.all(
+        Object.entries(zip.files).map(async ([path, entry]) => {
+          if (entry.dir || path.startsWith("__MACOSX/") || path.includes("/.")) return;
+          try {
+            const content = await entry.async("string");
+            extracted.push({ path, content });
+          } catch {
+            // Skip binary or unreadable entries
+          }
+        })
+      );
+
+      await applyUploadedFiles(extracted, "ZIP");
+    } catch (err) {
+      terminalRef.current?.write(`Upload failed: ${err.message}\n`);
+      addNotification(`Upload failed: ${err.message}`, "warning");
+    }
+  };
+
+  const handleUploadFolder = async (event) => {
+    const fileList = event.target.files;
+    event.target.value = "";
+
+    if (!fileList?.length) return;
+
+    try {
+      const extracted = [];
+
+      await Promise.all(
+        Array.from(fileList).map(async (file) => {
+          const path = file.webkitRelativePath || file.name;
+          if (!path || path.startsWith(".") || path.includes("/.")) return;
+
+          try {
+            const content = await file.text();
+            extracted.push({ path, content });
+          } catch {
+            // Skip binary files
+          }
+        })
+      );
+
+      await applyUploadedFiles(extracted, "folder");
+    } catch (err) {
+      terminalRef.current?.write(`Folder upload failed: ${err.message}\n`);
+      addNotification(`Folder upload failed: ${err.message}`, "warning");
+    }
   };
 
   const handleTreeUpdate = (newTree) => {
@@ -322,7 +518,7 @@ export default function EditorPage() {
     socket.emit("cursor-update", {
       fileId: activeFile.id,
       cursor: position,
-      username: user.username
+      username: user.name || user.username,
     });
   };
 
@@ -389,7 +585,20 @@ export default function EditorPage() {
         language: detectLanguage(activeFile.name),
         code: activeFile.content
       });
-      terminalRef.current?.write(data.output + "\n");
+      
+      const jobId = data.jobId;
+      if (jobId && socket) {
+        terminalRef.current?.write("⏳ Code queued for execution...\n");
+        const handleOutput = ({ output }) => {
+          terminalRef.current?.write(output);
+          if (output.includes("✅ Execution Finished") || output.includes("❌ Failed:")) {
+            socket.off(`run:output:${jobId}`, handleOutput);
+          }
+        };
+        socket.on(`run:output:${jobId}`, handleOutput);
+      } else {
+        terminalRef.current?.write("❌ Job queue error or socket not connected\n");
+      }
     } catch (err) {
       terminalRef.current?.write(`\n❌ Execution Error: ${err.response?.data?.output || err.message}\n`);
     }
@@ -430,6 +639,50 @@ export default function EditorPage() {
             </button>
           </div>
         </div>
+
+        <div className="px-3 py-2.5 flex flex-col gap-2" style={{ borderBottom: `1px solid ${line}` }}>
+          <button
+            onClick={() => uploadFolderRef.current?.click()}
+            className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-[12px] transition-colors hover:bg-white/5"
+            style={{ border: `1px solid ${line}`, color: text }}
+          >
+            <Upload size={14} />
+            Upload from computer
+          </button>
+          <button
+            onClick={() => uploadZipRef.current?.click()}
+            className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-[12px] transition-colors hover:bg-white/5"
+            style={{ border: `1px solid ${line}`, color: textMuted }}
+          >
+            <Upload size={14} />
+            Upload ZIP
+          </button>
+          <button
+            onClick={handleDownloadProject}
+            className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-[12px] transition-transform hover:-translate-y-0.5"
+            style={{ background: clay, color: bg }}
+          >
+            <Download size={14} />
+            Download project
+          </button>
+        </div>
+
+        <input
+          ref={uploadZipRef}
+          type="file"
+          accept=".zip,application/zip"
+          className="hidden"
+          onChange={handleUploadZip}
+        />
+        <input
+          ref={uploadFolderRef}
+          type="file"
+          webkitdirectory=""
+          directory=""
+          multiple
+          className="hidden"
+          onChange={handleUploadFolder}
+        />
         <FileTree
           nodes={tree}
           onSelect={openFile}
@@ -521,9 +774,9 @@ export default function EditorPage() {
             <CodeEditor
               activeFile={activeFile}
               onChange={updateContent}
-              language={detectLanguage(activeFile.name)}
               remoteCursors={remoteCursors}
               onCursorChange={handleCursorChange}
+              currentUserId={user?._id}
             />
           ) : (
             <div className="h-full flex items-center justify-center text-[14px]" style={{ color: textMuted }}>
@@ -532,27 +785,14 @@ export default function EditorPage() {
           )}
         </div>
 
-        {/* Preview */}
-        {previewUrl && (
-          <div className="h-1/3 relative" style={{ borderTop: `1px solid ${line}`, background: "#fff" }}>
-            <div
-              className="absolute top-0 right-0 px-2 py-1 text-[11px] cursor-pointer"
-              style={{ background: surface, color: textMuted }}
-              onClick={() => setPreviewUrl("")}
-            >
-              Close
-            </div>
-            <iframe
-              src={previewUrl}
-              title="Website Preview"
-              className="w-full h-full"
-            />
-          </div>
-        )}
-
         {/* Terminal */}
-        <TerminalPanel ref={terminalRef} />
+        <TerminalPanel ref={terminalRef} socket={socket} roomId={roomId} />
       </main>
+
+      {/* Floating Preview Window */}
+      {previewUrl && (
+        <PreviewPopup url={previewUrl} onClose={() => setPreviewUrl("")} />
+      )}
 
       {/* PROFILE MODAL */}
       {selectedProfile && (

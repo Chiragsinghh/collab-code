@@ -1,4 +1,7 @@
 import jwt from "jsonwebtoken";
+import fs from "fs";
+import path from "path";
+import { spawn } from "child_process";
 import Project from "../models/Project.js";
 import ChatMessage from "../models/ProjectChatMessage.js"; // Updated to new model
 
@@ -19,6 +22,18 @@ export const socketHandler = (io) => {
   io.on("connection", (socket) => {
     let currentRoomId = null;
     let currentUser = null;
+    let terminalCwd = null;
+    let activeTerminalProcess = null;
+
+    // Helper to get or initialize project path
+    const getProjectPath = (roomId) => {
+      const PREVIEW_ROOT = path.join(process.cwd(), 'previews');
+      const projectPath = path.join(PREVIEW_ROOT, roomId);
+      if (!fs.existsSync(projectPath)) {
+        fs.mkdirSync(projectPath, { recursive: true });
+      }
+      return projectPath;
+    };
 
     console.log(`🔌 Client connected: ${socket.id}`);
 
@@ -236,8 +251,110 @@ export const socketHandler = (io) => {
       } catch (e) { console.error("Chat save error", e); }
     });
 
+    // 🖥️ TERMINAL SOCK EVENTS
+    socket.on("terminal:init", ({ roomId }) => {
+      const targetRoomId = roomId || currentRoomId;
+      if (!targetRoomId) return;
+
+      const projectPath = getProjectPath(targetRoomId);
+      if (!terminalCwd) {
+        terminalCwd = projectPath;
+      }
+
+      const relativePath = path.relative(projectPath, terminalCwd);
+      socket.emit("terminal:ready", { relativePath });
+    });
+
+    socket.on("terminal:command", async ({ command, roomId }) => {
+      const targetRoomId = roomId || currentRoomId;
+      if (!targetRoomId) {
+        socket.emit("terminal:output", { output: "\r\n❌ Terminal error: No room context.\r\n" });
+        socket.emit("terminal:ready", { relativePath: "" });
+        return;
+      }
+
+      const projectPath = getProjectPath(targetRoomId);
+      if (!terminalCwd) {
+        terminalCwd = projectPath;
+      }
+
+      const parts = command.trim().split(/\s+/);
+      const mainCmd = parts[0];
+
+      if (mainCmd === "cd") {
+        const targetPath = parts[1] || "";
+        let newCwd;
+        if (!targetPath) {
+          newCwd = projectPath;
+        } else {
+          newCwd = path.resolve(terminalCwd, targetPath);
+        }
+
+        // Secure: clamp to project root to prevent moving out of the project folder
+        if (!newCwd.startsWith(projectPath)) {
+          newCwd = projectPath;
+        }
+
+        if (fs.existsSync(newCwd) && fs.statSync(newCwd).isDirectory()) {
+          terminalCwd = newCwd;
+        } else {
+          socket.emit("terminal:output", { output: `cd: no such file or directory: ${targetPath}\r\n` });
+        }
+
+        const relativePath = path.relative(projectPath, terminalCwd);
+        socket.emit("terminal:ready", { relativePath });
+        return;
+      }
+
+      // Execute general shell commands
+      try {
+        activeTerminalProcess = spawn(command, {
+          cwd: terminalCwd,
+          shell: true
+        });
+
+        activeTerminalProcess.stdout.on("data", (data) => {
+          socket.emit("terminal:output", { output: data.toString().replace(/\r?\n/g, "\r\n") });
+        });
+
+        activeTerminalProcess.stderr.on("data", (data) => {
+          socket.emit("terminal:output", { output: data.toString().replace(/\r?\n/g, "\r\n") });
+        });
+
+        activeTerminalProcess.on("error", (err) => {
+          socket.emit("terminal:output", { output: `\r\n❌ Error executing command: ${err.message}\r\n` });
+        });
+
+        activeTerminalProcess.on("close", (code) => {
+          activeTerminalProcess = null;
+          const relativePath = path.relative(projectPath, terminalCwd);
+          socket.emit("terminal:ready", { relativePath });
+        });
+      } catch (err) {
+        socket.emit("terminal:output", { output: `\r\n❌ Command failed: ${err.message}\r\n` });
+        const relativePath = path.relative(projectPath, terminalCwd);
+        socket.emit("terminal:ready", { relativePath });
+      }
+    });
+
+    socket.on("terminal:kill", () => {
+      if (activeTerminalProcess) {
+        try {
+          activeTerminalProcess.kill("SIGINT");
+        } catch (err) {
+          console.error("Failed to kill terminal process:", err);
+        }
+      }
+    });
+
     // ❌ DISCONNECT
     socket.on("disconnect", () => {
+      if (activeTerminalProcess) {
+        try {
+          activeTerminalProcess.kill("SIGINT");
+        } catch (e) {}
+      }
+
       if (currentRoomId && rooms.has(currentRoomId)) {
         const room = rooms.get(currentRoomId);
         room.users.delete(socket.id);

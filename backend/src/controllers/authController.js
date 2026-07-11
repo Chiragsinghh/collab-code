@@ -1,4 +1,4 @@
-import { registerUser, loginUser, generateToken } from '../services/authService.js';
+import { registerUser, loginUser, generateToken, oauthLoginOrCreate, verifyGoogleToken, exchangeGoogleCode, exchangeGitHubCode } from '../services/authService.js';
 
 export const signup = async (req, res) => {
     try {
@@ -65,6 +65,28 @@ export const getUser = async (req, res) => {
     }
 };
 
+export const oauthLogin = async (req, res) => {
+    try {
+        const { provider, email, name, avatarUrl, providerId } = req.body;
+
+        if (!['google', 'github'].includes(provider)) {
+            return res.status(400).json({ message: 'Invalid OAuth provider' });
+        }
+
+        const { user, token } = await oauthLoginOrCreate({
+            provider,
+            email,
+            name,
+            avatarUrl,
+            providerId,
+        });
+
+        res.json({ user, token });
+    } catch (error) {
+        res.status(400).json({ message: error.message });
+    }
+};
+
 export const updateProfile = async (req, res) => {
     try {
         const user = req.user; // populated by protect middleware
@@ -106,6 +128,69 @@ export const updateProfile = async (req, res) => {
             preferences: user.preferences,
             lastActive: user.lastActive
         });
+    } catch (error) {
+        res.status(400).json({ message: error.message });
+    }
+};
+
+export const getAuthConfig = async (req, res) => {
+    try {
+        res.json({
+            googleClientId: process.env.GOOGLE_CLIENT_ID || "",
+            githubClientId: process.env.GITHUB_CLIENT_ID || "",
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+export const googleLogin = async (req, res) => {
+    try {
+        const { idToken, code } = req.body;
+        if (!idToken && !code) {
+            return res.status(400).json({ message: 'idToken or code is required' });
+        }
+        
+        let googleProfile;
+        if (code) {
+            googleProfile = await exchangeGoogleCode(code);
+        } else {
+            googleProfile = await verifyGoogleToken(idToken);
+        }
+
+        const { user, token } = await oauthLoginOrCreate({
+            provider: 'google',
+            email: googleProfile.email,
+            name: googleProfile.name,
+            avatarUrl: googleProfile.avatarUrl,
+            providerId: googleProfile.providerId,
+        });
+        
+        res.json({ user, token });
+    } catch (error) {
+        res.status(400).json({ message: error.message });
+    }
+};
+
+export const githubLogin = async (req, res) => {
+    try {
+        const { code } = req.body;
+        if (!code) {
+            return res.status(400).json({ message: 'code is required' });
+        }
+        
+        const githubProfile = await exchangeGitHubCode(code);
+        const { user, token } = await oauthLoginOrCreate({
+            provider: 'github',
+            email: githubProfile.email,
+            name: githubProfile.name,
+            avatarUrl: githubProfile.avatarUrl,
+            providerId: githubProfile.providerId,
+            githubUsername: githubProfile.githubUsername,
+            githubToken: githubProfile.accessToken,
+        });
+        
+        res.json({ user, token });
     } catch (error) {
         res.status(400).json({ message: error.message });
     }

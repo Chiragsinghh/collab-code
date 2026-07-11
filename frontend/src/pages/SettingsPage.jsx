@@ -176,7 +176,7 @@ export default function SettingsPage() {
       </nav>
 
       {/* MAIN CONTAINER */}
-      <main className="relative z-10 max-w-4xl mx-auto px-6 mt-8">
+      <main className=" z-10 max-w-4xl mx-auto px-6 mt-8">
         {successMsg && (
           <div
             className="mb-6 p-4 rounded-lg flex items-center gap-3 text-[13px]"
@@ -198,7 +198,7 @@ export default function SettingsPage() {
 
         {/* PROFILE HEADER CARD */}
         <div
-          className="rounded-xl p-6 mb-8 flex flex-col sm:flex-row items-center gap-6"
+          className="rounded-xl p-6 mb-8 flex flex-col sm:flex-col items-center gap-6"
           style={{ background: surfaceRaised, border: `1px solid ${line}` }}
         >
           <UserAvatar
@@ -223,7 +223,7 @@ export default function SettingsPage() {
         {/* FORMS SECTION */}
         <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* LEFT COLUMN */}
-          <div className="space-y-6">
+          <div space-y-8 >
             <Card>
               <SectionHeader icon={User}>Profile details</SectionHeader>
 
@@ -290,62 +290,13 @@ export default function SettingsPage() {
               </div>
             </Card>
           </div>
-
-          {/* RIGHT COLUMN */}
-          <div className="space-y-6">
-            <Card>
-              <SectionHeader icon={Settings}>Editor configuration</SectionHeader>
-
-              <div>
-                <Label>Theme mode</Label>
-                <Select value={theme} onChange={(e) => setTheme(e.target.value)}>
-                  <option value="dark">Dark theme</option>
-                  <option value="light">Light theme</option>
-                  <option value="system">System default</option>
-                </Select>
-              </div>
-
-              <div>
-                <Label>Editor font size (px)</Label>
-                <Select value={editorFontSize} onChange={(e) => setEditorFontSize(parseInt(e.target.value))}>
-                  {[12, 13, 14, 15, 16, 18, 20, 22].map((size) => (
-                    <option key={size} value={size}>{size}px</option>
-                  ))}
-                </Select>
-              </div>
-
-              <div>
-                <Label>Tab space indentation</Label>
-                <Select value={tabSize} onChange={(e) => setTabSize(parseInt(e.target.value))}>
-                  <option value={2}>2 spaces</option>
-                  <option value={4}>4 spaces</option>
-                  <option value={8}>8 spaces</option>
-                </Select>
-              </div>
-
-              <div>
-                <Label>Keymap shortcuts</Label>
-                <Select value={keymap} onChange={(e) => setKeymap(e.target.value)}>
-                  <option value="vscode">VS Code standard</option>
-                  <option value="vim">Vim keyboard emulation</option>
-                  <option value="emacs">Emacs keybindings</option>
-                </Select>
-              </div>
-            </Card>
-
-            <Card className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-[18px] h-[18px]" style={{ color: clay }} />
-                <h4 className="text-[14px]" style={{ fontFamily: "'Fraunces', serif", fontWeight: 560 }}>Developer info</h4>
-              </div>
-              <p className="text-[12px] leading-relaxed" style={{ color: textMuted }}>
-                Configure your CodeSync workspace preferences and details to personalize your real-time editor profile. These details are shared with collaborators when you're working on a project together.
-              </p>
-            </Card>
-          </div>
+              
 
           {/* SAVE BUTTON */}
-          <div className="md:col-span-2 flex items-center justify-end gap-4 pt-6" style={{ borderTop: `1px solid ${line}` }}>
+          <div
+    className="md:col-span-2 flex items-center gap-4 pt-6"
+    style={{ borderTop: `1px solid ${line}` }}
+  >
             <button
               type="button"
               onClick={() => navigate("/dashboard")}

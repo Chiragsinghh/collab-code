@@ -7,6 +7,7 @@ import { useState, useEffect } from "react";
 import { motion, useMotionValue, useMotionTemplate, useSpring } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
+import { useAuth } from "../Context/AuthContext";
 import { ArrowRight, Github, Mail, Check } from "lucide-react";
 
 /* ---- Design tokens (same as LandingPage / LoginPage) ---- */
@@ -89,10 +90,25 @@ function Field(props) {
 
 export default function SignupPage() {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [oauthLoading, setOauthLoading] = useState(false);
+  const [authConfig, setAuthConfig] = useState({ googleClientId: "", githubClientId: "" });
+
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const response = await axios.get("http://localhost:5001/api/auth/config");
+        setAuthConfig(response.data);
+      } catch (err) {
+        console.error("Failed to load auth config:", err);
+      }
+    };
+    fetchConfig();
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -106,13 +122,32 @@ export default function SignupPage() {
       });
 
       if (response.data.token) {
-        localStorage.setItem("codesync_user", JSON.stringify(response.data.user));
-        localStorage.setItem("codesync_token", response.data.token);
+        login(response.data.user, response.data.token);
         navigate("/dashboard");
       }
     } catch (err) {
       setError(err.response?.data?.message || "Something went wrong. Please try again.");
     }
+  };
+
+  const handleGoogleLogin = () => {
+    if (!authConfig.googleClientId) {
+      setError("Google client ID is not configured on the server.");
+      return;
+    }
+    const redirectUri = window.location.origin + "/login";
+    const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${authConfig.googleClientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent("openid email profile")}&state=google`;
+    window.location.href = googleAuthUrl;
+  };
+
+  const handleGithubLogin = () => {
+    if (!authConfig.githubClientId) {
+      setError("GitHub client ID is not configured on the server.");
+      return;
+    }
+    const redirectUri = window.location.origin + "/login";
+    const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${authConfig.githubClientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent("read:user,user:email")}&state=github`;
+    window.location.href = githubAuthUrl;
   };
 
   return (
@@ -193,13 +228,19 @@ export default function SignupPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <button
-              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-[14px] transition-colors"
+              type="button"
+              onClick={handleGithubLogin}
+              disabled={oauthLoading}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-[14px] transition-colors hover:bg-white/5 disabled:opacity-50"
               style={{ border: `1px solid ${line}`, color: text }}
             >
               <Github className="w-4 h-4" /> GitHub
             </button>
             <button
-              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-[14px] transition-colors"
+              type="button"
+              onClick={handleGoogleLogin}
+              disabled={oauthLoading}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-[14px] transition-colors hover:bg-white/5 disabled:opacity-50"
               style={{ border: `1px solid ${line}`, color: text }}
             >
               <Mail className="w-4 h-4" /> Google

@@ -1,20 +1,20 @@
-import React, { useState } from "react";
-import {
-  File,
-  Folder,
-  ChevronDown,
-  ChevronRight,
-} from "lucide-react";
 
-export default function FileTree({
-  nodes = [],
-  onSelect,
-  onRename,
-  onCreate,
-  onDelete,
-}) {
+
+import React, { useState } from "react";
+import { File, Folder, ChevronDown, ChevronRight, FilePlus, FolderPlus, Trash2 } from "lucide-react";
+
+const surfaceRaised = "#26221C";
+const text = "#F4F1EA";
+const textMuted = "#9B988F";
+const line = "rgba(244,241,234,0.10)";
+const clay = "#E4895F";
+const teal = "#7FB39E";
+const errorColor = "#D9705A";
+const inputBg = "#090907ff";
+
+export default function FileTree({ nodes = [], onSelect, onRename, onCreate, onDelete }) {
   return (
-    <div className="p-2 text-sm">
+    <div className="p-2 text-sm" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
       {nodes.map((node) => (
         <TreeNode
           key={node.id}
@@ -34,13 +34,11 @@ function TreeNode({ node, onSelect, onRename, onCreate, onDelete }) {
   const [inputValue, setInputValue] = useState(node.name);
   const [menu, setMenu] = useState(null);
 
-  /* ✅ Rename complete on Enter */
   const finishRename = () => {
     if (!inputValue.trim()) return;
     onRename(node.id, inputValue.trim());
   };
 
-  /* ✅ Right Click Menu */
   const handleContextMenu = (e) => {
     e.preventDefault();
     setMenu({ x: e.pageX, y: e.pageY });
@@ -50,34 +48,29 @@ function TreeNode({ node, onSelect, onRename, onCreate, onDelete }) {
 
   return (
     <div className="ml-3">
-      {/* ROW */}
       <div
-        className="flex items-center gap-2 px-2 py-1 rounded hover:bg-white/10 cursor-pointer relative"
+        className="flex items-center gap-2 px-2 py-1 rounded cursor-pointer relative transition-colors"
+        style={{ color: textMuted }}
+        onMouseEnter={(e) => (e.currentTarget.style.background = `${line}`)}
+        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
         onClick={() => {
           if (node.type === "folder") setExpanded(!expanded);
           if (!node.isNew && node.type === "file") onSelect(node);
         }}
         onContextMenu={handleContextMenu}
       >
-        {/* Arrow */}
         {node.type === "folder" ? (
-          expanded ? (
-            <ChevronDown size={14} />
-          ) : (
-            <ChevronRight size={14} />
-          )
+          expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />
         ) : (
           <span className="w-[14px]" />
         )}
 
-        {/* Icon */}
         {node.type === "folder" ? (
-          <Folder size={16} className="text-yellow-400" />
+          <Folder size={16} style={{ color: clay }} />
         ) : (
-          <File size={16} className="text-blue-400" />
+          <File size={16} style={{ color: teal }} />
         )}
 
-        {/* Inline Rename */}
         {node.isNew ? (
           <input
             autoFocus
@@ -87,69 +80,60 @@ function TreeNode({ node, onSelect, onRename, onCreate, onDelete }) {
             onKeyDown={(e) => {
               if (e.key === "Enter") finishRename();
             }}
-            className="bg-black border border-white/20 px-1 rounded text-white text-sm w-32"
+            className="px-1.5 py-0.5 rounded text-sm w-32 outline-none"
+            style={{ background: inputBg, border: `1px solid ${clay}`, color: text }}
           />
         ) : (
-          <span>{node.name}</span>
+          <span style={{ color: text }}>{node.name}</span>
         )}
 
-        {/* ✅ Right Click Menu */}
         {menu && (
           <>
-            {/* Backdrop to close menu */}
             <div className="fixed inset-0 z-40" onClick={closeMenu} />
-
             <div
-              className="fixed bg-[#1a1f2e] border border-white/10 rounded shadow-lg text-xs z-50 min-w-[120px]"
-              style={{
-                top: Math.min(menu.y, window.innerHeight - 100),
-                left: Math.min(menu.x, window.innerWidth - 150),
-              }}
+              className="fixed rounded-lg shadow-xl text-xs z-50 min-w-[140px] overflow-hidden py-1"
+              style={{ background: surfaceRaised, border: `1px solid ${line}`, top: Math.min(menu.y, window.innerHeight - 100), left: Math.min(menu.x, window.innerWidth - 150) }}
             >
-              {/* Folder Options */}
               {node.type === "folder" && (
                 <>
                   <button
-                    className="w-full text-left px-3 py-2 hover:bg-white/10 flex items-center gap-2"
-                    onClick={() => {
-                      onCreate(node.id, "file");
-                      closeMenu();
-                    }}
+                    className="w-full text-left px-3 py-2 flex items-center gap-2 transition-colors"
+                    style={{ color: text }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = line)}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                    onClick={() => { onCreate(node.id, "file"); closeMenu(); }}
                   >
-                    <File size={12} /> New File
+                    <FilePlus size={12} /> New file
                   </button>
-
                   <button
-                    className="w-full text-left px-3 py-2 hover:bg-white/10 flex items-center gap-2"
-                    onClick={() => {
-                      onCreate(node.id, "folder");
-                      closeMenu();
-                    }}
+                    className="w-full text-left px-3 py-2 flex items-center gap-2 transition-colors"
+                    style={{ color: text }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = line)}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                    onClick={() => { onCreate(node.id, "folder"); closeMenu(); }}
                   >
-                    <Folder size={12} /> New Folder
+                    <FolderPlus size={12} /> New folder
                   </button>
-                  <div className="h-px bg-white/10 my-1" />
+                  <div className="h-px my-1" style={{ background: line }} />
                 </>
               )}
-
-              {/* Delete */}
               <button
-                className="w-full text-left px-3 py-2 hover:bg-white/10 text-red-400 flex items-center gap-2"
+                className="w-full text-left px-3 py-2 flex items-center gap-2 transition-colors"
+                style={{ color: errorColor }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = line)}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                 onClick={() => {
-                  if (window.confirm(`Delete ${node.name}?`)) {
-                    onDelete(node.id);
-                  }
+                  if (window.confirm(`Delete ${node.name}?`)) onDelete(node.id);
                   closeMenu();
                 }}
               >
-                🗑 Delete
+                <Trash2 size={12} /> Delete
               </button>
             </div>
           </>
         )}
       </div>
 
-      {/* CHILDREN */}
       {expanded &&
         node.children?.map((child) => (
           <TreeNode

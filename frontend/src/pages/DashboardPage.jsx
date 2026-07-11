@@ -22,7 +22,7 @@ import { Link, useNavigate } from "react-router-dom";
 import api from "../lib/api";
 import { useAuth } from "../Context/AuthContext";
 import UserAvatar from "../components/ide/UserAvatar";
-import { Plus, LogOut, Search, X, Share2, Users } from "lucide-react";
+import { Plus, LogOut, Search, X, Share2, Users, Github } from "lucide-react";
 
 /* ---- Design tokens (same across the app) ---- */
 const bg = "#191817";
@@ -77,6 +77,10 @@ export default function DashboardPage() {
   const [isJoinOpen, setIsJoinOpen] = useState(false);
   const [joinRoomId, setJoinRoomId] = useState("");
 
+  const [isGithubOpen, setIsGithubOpen] = useState(false);
+  const [githubRepoUrl, setGithubRepoUrl] = useState("");
+  const [isImporting, setIsImporting] = useState(false);
+
   const handleJoinSubmit = (e) => {
     e.preventDefault();
     if (!joinRoomId.trim()) return;
@@ -128,6 +132,27 @@ export default function DashboardPage() {
       alert("Project creation failed. Check backend.");
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  const handleGithubImport = async (e) => {
+    e.preventDefault();
+    if (!githubRepoUrl.trim() || isImporting) return;
+
+    setIsImporting(true);
+
+    try {
+      const { data } = await api.post("/github/import-url", {
+        repoUrl: githubRepoUrl.trim(),
+      });
+
+      setIsGithubOpen(false);
+      setGithubRepoUrl("");
+      navigate(`/editor/${data.roomId}`);
+    } catch (err) {
+      alert(err.response?.data?.message || "Failed to import repository.");
+    } finally {
+      setIsImporting(false);
     }
   };
 
@@ -404,6 +429,70 @@ export default function DashboardPage() {
                   style={{ background: clay, color: bg }}
                 >
                   Join
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
+
+      {/* IMPORT GITHUB REPO MODAL */}
+      {isGithubOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-6"
+          style={{ background: "rgba(10,9,8,0.6)", backdropFilter: "blur(4px)" }}
+          onClick={() => setIsGithubOpen(false)}
+        >
+          <motion.div
+            initial={{ opacity: 0, y: 10, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.2 }}
+            className="w-full max-w-md rounded-2xl p-6"
+            style={{ background: surfaceRaised, border: `1px solid ${line}`, boxShadow: "0 30px 80px -30px rgba(0,0,0,0.6)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-5">
+              <h2 style={{ fontFamily: "'Fraunces', serif", fontWeight: 560, fontSize: 18 }}>
+                Import GitHub Repo
+              </h2>
+              <button onClick={() => setIsGithubOpen(false)} style={{ color: textMuted }}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-[13px] mb-4" style={{ color: textMuted }}>
+              Paste a public GitHub repository URL to import its files into a new project.
+            </p>
+
+            <form onSubmit={handleGithubImport}>
+              <input
+                placeholder="https://github.com/owner/repo"
+                value={githubRepoUrl}
+                onChange={(e) => setGithubRepoUrl(e.target.value)}
+                autoFocus
+                className="w-full px-3.5 py-2.5 rounded-lg text-[14px] outline-none transition-colors"
+                style={{ background: inputBg, border: `1px solid ${line}`, color: text }}
+                onFocus={(e) => (e.target.style.borderColor = clay)}
+                onBlur={(e) => (e.target.style.borderColor = line)}
+              />
+
+              <div className="flex justify-end gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setIsGithubOpen(false)}
+                  className="px-4 py-2 rounded-lg text-[14px]"
+                  style={{ color: textMuted }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!githubRepoUrl.trim() || isImporting}
+                  className="px-4 py-2 rounded-lg text-[14px] disabled:opacity-50 inline-flex items-center gap-2"
+                  style={{ background: clay, color: bg }}
+                >
+                  <Github className="w-4 h-4" />
+                  {isImporting ? "Importing..." : "Import & Open"}
                 </button>
               </div>
             </form>

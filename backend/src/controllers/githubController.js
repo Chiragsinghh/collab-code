@@ -25,10 +25,28 @@ export const importRepo = async (req, res) => {
         if (!token) return res.status(400).json({ message: "GitHub token required" });
 
         const contents = await githubService.getRepoContents(token, owner, repo);
-        // In a real app, we would recursively fetch the whole tree and convert it to our Project structure
-        // This is a simplified version returning the root contents
         res.json(contents);
     } catch (error) {
         res.status(500).json({ message: error.message });
+    }
+};
+
+export const importUrl = async (req, res) => {
+    try {
+        const { repoUrl } = req.body;
+
+        if (!repoUrl?.trim()) {
+            return res.status(400).json({ message: 'Repository URL is required' });
+        }
+
+        const project = await githubService.importRepoFromUrl(repoUrl.trim(), req.user._id);
+
+        res.status(201).json({
+            roomId: project.roomId,
+            name: project.name,
+            tree: project.tree,
+        });
+    } catch (error) {
+        res.status(400).json({ message: error.message });
     }
 };

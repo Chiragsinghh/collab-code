@@ -189,7 +189,7 @@ export default function LandingPage() {
           <motion.h1
             variants={fadeUp}
             className="text-[44px] md:text-[64px] leading-[1.05] tracking-tight mb-6"
-            style={{ fontFamily: "'Fraunces', serif", fontWeight: 560 }}
+            style={{ fontFamily: "'DxSlight-BlackUltra', 'Fraunces', serif", fontWeight: 560 }}
           >
             Code together,
             <br />
