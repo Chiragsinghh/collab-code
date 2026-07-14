@@ -618,7 +618,15 @@ export default function EditorPage() {
       terminalRef.current?.write("\n" + (data.output || "Server Started") + "\n");
 
       if (data.url) {
-        setPreviewUrl(data.url);
+      let previewUrl = data.url;
+      if (previewUrl.startsWith('/')) {
+        const backendBase = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001';
+        previewUrl = `${backendBase}${previewUrl}`;
+      } else if (previewUrl.startsWith('http://localhost') && import.meta.env.VITE_BACKEND_URL) {
+        // Fallback if the backend still returns localhost but we have a deployed backend URL
+        previewUrl = previewUrl.replace(/^http:\/\/localhost:\d+/, import.meta.env.VITE_BACKEND_URL);
+      }
+      setPreviewUrl(previewUrl);
       }
     } catch (err) {
       terminalRef.current?.write("\n❌ Preview Server Error: " + (err.response?.data?.message || err.message) + "\n");
