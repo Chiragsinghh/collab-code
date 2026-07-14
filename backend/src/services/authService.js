@@ -86,7 +86,7 @@ export const exchangeGoogleCode = async (code) => {
             code,
             client_id: process.env.GOOGLE_CLIENT_ID,
             client_secret: process.env.GOOGLE_CLIENT_SECRET,
-            redirect_uri: 'http://localhost:5173/login',
+            redirect_uri: process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}/login` : 'http://localhost:5173/login',
             grant_type: 'authorization_code',
         }),
     });

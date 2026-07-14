@@ -85,7 +85,8 @@ export const startPreview = async (roomId, files) => {
     } else {
         // Fallback to serving static files directly via Express static middleware on port 5001!
         const backendPort = process.env.PORT || 5001;
-        const url = `http://localhost:${backendPort}/previews/${roomId}/`;
+        const backendUrl = process.env.BACKEND_URL || `http://localhost:${backendPort}`;
+        const url = `${backendUrl}/previews/${roomId}/`;
         return { url };
     }
 };
