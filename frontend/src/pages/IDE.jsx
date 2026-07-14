@@ -93,7 +93,8 @@ export default function EditorPage() {
       return;
     }
 
-    const newSocket = io("http://localhost:5001");
+    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001';
+    const newSocket = io(BACKEND_URL);
     setSocket(newSocket);
 
     newSocket.on("connect", () => {

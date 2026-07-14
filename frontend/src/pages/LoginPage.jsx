@@ -93,7 +93,8 @@ export default function LoginPage() {
   useEffect(() => {
     const fetchConfig = async () => {
       try {
-        const response = await axios.get("http://localhost:5001/api/auth/config");
+        const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5001";
+        const response = await axios.get(`${BACKEND_URL}/api/auth/config`);
         setAuthConfig(response.data);
       } catch (err) {
         console.error("Failed to load auth config:", err);
@@ -117,9 +118,11 @@ export default function LoginPage() {
         try {
           let response;
           if (state === "google") {
-            response = await axios.post("http://localhost:5001/api/auth/google", { code });
-          } else if (state === "github") {
-            response = await axios.post("http://localhost:5001/api/auth/github", { code });
+            const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5001";
+            response = await axios.post(`${BACKEND_URL}/api/auth/google`, { code });
+          } else {
+            const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5001";
+            response = await axios.post(`${BACKEND_URL}/api/auth/github`, { code });
           }
           
           if (response && response.data.token) {
@@ -142,7 +145,8 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const response = await axios.post("http://localhost:5001/api/auth/login", {
+      const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5001";
+      const response = await axios.post(`${BACKEND_URL}/api/auth/login`, {
         email,
         password,
       });

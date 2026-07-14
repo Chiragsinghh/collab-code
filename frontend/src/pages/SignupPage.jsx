@@ -101,7 +101,8 @@ export default function SignupPage() {
   useEffect(() => {
     const fetchConfig = async () => {
       try {
-        const response = await axios.get("http://localhost:5001/api/auth/config");
+        const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5001";
+        const response = await axios.get(`${BACKEND_URL}/api/auth/config`);
         setAuthConfig(response.data);
       } catch (err) {
         console.error("Failed to load auth config:", err);
@@ -115,7 +116,8 @@ export default function SignupPage() {
     setError("");
 
     try {
-      const response = await axios.post("http://localhost:5001/api/auth/signup", {
+      const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5001";
+      const response = await axios.post(`${BACKEND_URL}/api/auth/signup`, {
         username: name,
         email,
         password,
