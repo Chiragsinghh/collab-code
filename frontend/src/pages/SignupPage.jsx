@@ -228,16 +228,7 @@ export default function SignupPage() {
             <div className="flex-1 h-px" style={{ background: line }} />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={handleGithubLogin}
-              disabled={oauthLoading}
-              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-[14px] transition-colors hover:bg-white/5 disabled:opacity-50"
-              style={{ border: `1px solid ${line}`, color: text }}
-            >
-              <Github className="w-4 h-4" /> GitHub
-            </button>
+          <div className="grid grid-cols-1 gap-3">
             <button
               type="button"
               onClick={handleGoogleLogin}
