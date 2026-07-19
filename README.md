@@ -1,4 +1,4 @@
-# Collab-Code
+# CodeSync
 
 A web-based, real-time collaborative Integrated Development Environment (IDE) that lets multiple developers code together, chat, run shell commands, and preview their web projects — all from the browser.
 
